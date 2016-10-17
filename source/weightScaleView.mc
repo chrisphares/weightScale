@@ -15,7 +15,7 @@ class weightScaleView extends Ui.View {
 	// Load your resources here
 	function onLayout(dc) {
 		setLayout(Rez.Layouts.MainLayout(dc));
-		Sys.println(mSensor.userData.gender + " " + mSensor.userData.height + " " + mSensor.userData.activityClass + " " + mSensor.userData.birthYear);
+		Sys.println(mSensor.userData.gender + " " + mSensor.userData.height + " " + mSensor.userData.activityClass + " " + mSensor.userData.age);
 	}
 
 	// Called when this View is brought to the foreground. Restore
@@ -27,7 +27,9 @@ class weightScaleView extends Ui.View {
 	// Update the view
 	function onUpdate(dc) {
  		// Call the parent onUpdate function to redraw the layout
-	View.onUpdate(dc);
+		View.onUpdate(dc);
+
+		Sys.println(mSensor.searching);
     }
 
 	// Called when this View is removed from the screen. Save the
