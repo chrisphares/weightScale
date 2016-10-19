@@ -1,5 +1,6 @@
 using Toybox.Ant as Ant;
 using Toybox.Time as Time;
+using Toybox.System as Sys;
 using Toybox.WatchUi as Ui;
 using Toybox.UserProfile as UserProfile;
 using Toybox.Time.Gregorian as Calendar;
@@ -11,6 +12,7 @@ class weightScaleSensor extends Ant.GenericChannel {
 	var searching,
 		deviceCfg,
 		userData,
+		scaleData,
 		userProfileData,
 		bodyWeightData,
 		bodyCompData,
@@ -43,6 +45,11 @@ class weightScaleSensor extends Ant.GenericChannel {
 				age = info.year - profile.birthYear;
 			}
 		}
+	}
+
+	class scaleInfo {
+		var manID,
+			modelNumber;
 	}
 
 	class userProfilePage {
@@ -123,6 +130,24 @@ class weightScaleSensor extends Ant.GenericChannel {
 		}
 	}
 
+	class commonManInfoPage {
+		static const PAGE_NUMBER = 75;
+
+		function parse(payload, userData) {
+			scaleData.manID = parseManID(payload);
+			scaleData.modelNumber = parseModelNumber(payload);
+			Sys.println("recieve commona data page");
+		}
+
+		hidden function parseManID(payload) {
+			return (payload[4] + ((payload[5] & 0xFF) << 8));
+		}
+
+		hidden function parseModelNumber(payload) {
+			return (payload[6] + ((payload[7] & 0xFF) << 8));
+		}
+	}
+
 	function initialize() {
 		// Get the channel
 		chanAssign = new Ant.ChannelAssignment(Ant.CHANNEL_TYPE_RX_NOT_TX, Ant.NETWORK_PLUS);
@@ -141,6 +166,7 @@ class weightScaleSensor extends Ant.GenericChannel {
 
 		searching = true;
 		userData = new userInfo();
+		scaleData = new scaleInfo();
     }
 
 	function open() {
@@ -151,14 +177,17 @@ class weightScaleSensor extends Ant.GenericChannel {
 		userProfileData = new userProfilePage();
 
 		searching = true;
+
+		Sys.println("open channel");
 	}
 
 	function closeSensor() {
 		GenericChannel.close();
+		Sys.println("close channel");
 	}
 
 	function sendUserProfile() {
-		if (!searching) { //this may fail
+		if (!searching) {
 			var payload = new [8];
 
 			//userdata - temp hard code - need to change
@@ -176,7 +205,7 @@ class weightScaleSensor extends Ant.GenericChannel {
 			var message = new Ant.Message();
 			message.setPayload(payload);
 			GenericChannel.sendAcknowledge(message);
-			Sys.println("send user profile data");
+			Sys.println("sent user profile data");
 		}
 	}
 
@@ -184,59 +213,47 @@ class weightScaleSensor extends Ant.GenericChannel {
 		// Parse the payload
 		var payload = msg.getPayload();
 
-		if (Ant.MSG_ID_BROADCAST_DATA == msg.messageId) {
-			if (bodyWeightPage.PAGE_NUMBER == (payload[0].toNumber() & 0xFF)) {
-				if (searching) {
-					searching = false;
-					// Update our device configuration primarily to see the device number of the sensor we paired to
-					deviceCfg = GenericChannel.getDeviceConfig();
-				}
-				//send the data to the appropriate class for parsing
-				var bw = new bodyWeightPage();
-				bw.parse(payload, userData);
+		Sys.println("payload | " + payload[0] + ":" + payload[1] + ":" + payload[2] + ":" + payload[3] + ":" + payload[4] + ":" + payload[5] + ":" + payload[6] + ":" + payload[7]);
 
-				//update the view
-				Ui.requestUpdate();
+		if (Ant.MSG_ID_BROADCAST_DATA == msg.messageId) {
+
+			var dataPage = null,
+				data = null;
+
+			if (bodyWeightPage.PAGE_NUMBER == (payload[0].toNumber() & 0xFF)) {
+				dataPage = new bodyWeightPage();
+				data = userData;
 			}
 			else if (bodyCompositionPage.PAGE_NUMBER == (payload[0].toNumber() & 0xFF)) {
-				if (searching) {
-					searching = false;
-					// Update our device configuration primarily to see the device number of the sensor we paired to
-					deviceCfg = GenericChannel.getDeviceConfig();
-				}
-				//send the data to the appropriate class for parsing
-				var bc = new bodyCompositionPage();
-				bc.parse(payload, userData);
-
-				//update the view
-				Ui.requestUpdate();
+				dataPage = new bodyCompositionPage();
+				data = userData;
 			}
 			else if (metabolicPage.PAGE_NUMBER == (payload[0].toNumber() & 0xFF)) {
-				if (searching) {
-					searching = false;
-					// Update our device configuration primarily to see the device number of the sensor we paired to
-					deviceCfg = GenericChannel.getDeviceConfig();
-				}
-				//send the data to the appropriate class for parsing
-				var md = new metabolicPage();
-				md.parse(payload, userData);
-
-				//update the view
-				Ui.requestUpdate();
+				dataPage = new metabolicPage();
+				data = userData;
 			}
 			else if (bodyMassPage.PAGE_NUMBER == (payload[0].toNumber() & 0xFF)) {
-				if (searching) {
-					searching = false;
-					// Update our device configuration primarily to see the device number of the sensor we paired to
-					deviceCfg = GenericChannel.getDeviceConfig();
-				}
-				//send the data to the appropriate class for parsing
-				var bm = new bodyMassPage();
-				bm.parse(payload, userData);
-
-				//update the view
-				Ui.requestUpdate();
+				dataPage = new bodyMassPage();
+				data = userData;
 			}
+			else if (commonManInfoPage.PAGE_NUMBER == (payload[0].toNumber() & 0xFF)) {
+				dataPage = new bodyMassPage();
+				data = scaleData;
+			}
+			else {
+				Sys.println("other page:" + (payload[0].toNumber() & 0xFF));
+				sendUserProfile();
+			}
+
+			if (dataPage) {
+				searching = false;
+				deviceCfg = GenericChannel.getDeviceConfig(); // evaluate purpose
+				datapage.parse(payload, data);
+				Ui.requestUpdate();
+				Sys.println("datapage");
+			}
+
+			dataPage = null;
 		}
 		else if (Ant.MSG_ID_CHANNEL_RESPONSE_EVENT == msg.messageId) {
 			if (Ant.MSG_ID_RF_EVENT == (payload[0] & 0xFF)) {
@@ -250,6 +267,7 @@ class weightScaleSensor extends Ant.GenericChannel {
 			}
 			else {
 				//It is a channel response.
+				Sys.println("channelresponse");
             }
 		}
 	}
